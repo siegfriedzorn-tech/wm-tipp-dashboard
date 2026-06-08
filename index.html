@@ -104,18 +104,36 @@
     .tab-panel.active { display: block; }
     h2 {
       margin: 0 0 12px;
-      font-size: 16px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.6px;
+    }
+    h2:not(:first-child) { margin-top: 24px; }
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filters select {
+      flex: 1;
+      min-width: 120px;
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
     }
     .match {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 14px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       box-shadow: var(--shadow);
       position: relative;
     }
@@ -128,26 +146,34 @@
       font-size: 12px;
       color: var(--text-muted);
       margin-bottom: 8px;
+      gap: 8px;
     }
     .match-teams {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 600;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .match-tip {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--text-muted);
     }
     .match-tip strong { color: var(--text); }
+    .match-reason {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      font-style: italic;
+    }
     .badge {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 999px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.4px;
       color: #fff;
+      white-space: nowrap;
     }
     .badge.banker { background: var(--banker); }
     .badge.value { background: var(--value); color: #1a1a1a; }
@@ -161,6 +187,11 @@
       color: var(--text-muted);
       font-size: 14px;
     }
+    .count {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
   </style>
 </head>
 <body>
@@ -168,7 +199,7 @@
     <h1>WM 2026 — Tipp-Dashboard</h1>
     <div class="header-row">
       <div class="quote">Trefferquote: <strong>—</strong></div>
-      <input type="date" id="datePicker" class="date-picker" value="2026-06-14">
+      <input type="date" id="datePicker" class="date-picker" value="2026-06-14" min="2026-06-11" max="2026-06-28">
     </div>
   </header>
 
@@ -181,12 +212,26 @@
 
   <main>
     <section class="tab-panel active" id="tab-heute">
-      <h2>Heute &amp; Morgen</h2>
+      <h2 id="heuteTitle">Heute</h2>
       <div id="todayList"></div>
+      <h2 id="morgenTitle">Morgen</h2>
+      <div id="tomorrowList"></div>
     </section>
 
     <section class="tab-panel" id="tab-spiele">
-      <h2>Alle Spiele</h2>
+      <h2>Alle 72 Gruppenspiele</h2>
+      <div class="filters">
+        <select id="filterGruppe">
+          <option value="">Alle Gruppen</option>
+        </select>
+        <select id="filterSpieltag">
+          <option value="">Alle Spieltage</option>
+          <option value="1">Spieltag 1</option>
+          <option value="2">Spieltag 2</option>
+          <option value="3">Spieltag 3</option>
+        </select>
+      </div>
+      <div class="count" id="matchCount"></div>
       <div id="matchList"></div>
     </section>
 
@@ -202,84 +247,172 @@
   </main>
 
   <script>
-    // Beispiel-Daten (Schritt 1) — werden in Schritt 2 durch die 72 Spiele ersetzt.
+    // Alle 72 Gruppenspiele der WM 2026 (Quelle: WM2026_Basis-Prognosen_72-Spiele.md)
     const matches = [
-      {
-        id: "E-1-3",
-        datum: "2026-06-14",
-        zeit: "19:00",
-        gruppe: "E",
-        heim: "Deutschland",
-        gast: "Curaçao",
-        tipp: "3:0",
-        risiko: "banker",
-        flag: "DE"
-      },
-      {
-        id: "J-1-2",
-        datum: "2026-06-15",
-        zeit: "21:00",
-        gruppe: "J",
-        heim: "Österreich",
-        gast: "Jordanien",
-        tipp: "2:0",
-        risiko: "value",
-        flag: "AT"
-      },
-      {
-        id: "A-1-1",
-        datum: "2026-06-11",
-        zeit: "20:00",
-        gruppe: "A",
-        heim: "Mexiko",
-        gast: "Marokko",
-        tipp: "1:1",
-        risiko: "underdog",
-        flag: null
-      },
-      {
-        id: "B-1-2",
-        datum: "2026-06-12",
-        zeit: "18:00",
-        gruppe: "B",
-        heim: "Spanien",
-        gast: "Ghana",
-        tipp: "2:1",
-        risiko: "value",
-        flag: null
-      }
+      { id: "m01", datum: "2026-06-11", zeit: "21:00", gruppe: "A", spieltag: 1, heim: "Mexiko", gast: "Südafrika", tipp: "2:0", begruendung: "Heimvorteil im Aztekenstadion, Eröffnungsdruck wird in Tore umgesetzt.", tendenz: "Mexiko", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m02", datum: "2026-06-12", zeit: "04:00", gruppe: "A", spieltag: 1, heim: "Südkorea", gast: "Tschechien", tipp: "1:1", begruendung: "Son gegen kompakte Tschechen — ausgeglichen.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m03", datum: "2026-06-12", zeit: "21:00", gruppe: "B", spieltag: 1, heim: "Kanada", gast: "Bosnien", tipp: "2:1", begruendung: "Gastgeber mit Davies/David, Bosnien um Džeko zu alt.", tendenz: "Kanada", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m04", datum: "2026-06-13", zeit: "03:00", gruppe: "D", spieltag: 1, heim: "USA", gast: "Paraguay", tipp: "2:1", begruendung: "Heimstart der USA, Paraguay defensiv unangenehm aber unterlegen.", tendenz: "USA", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m05", datum: "2026-06-13", zeit: "21:00", gruppe: "B", spieltag: 1, heim: "Katar", gast: "Schweiz", tipp: "0:2", begruendung: "Klassenunterschied, Schweiz souverän.", tendenz: "Schweiz", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m06", datum: "2026-06-14", zeit: "00:00", gruppe: "C", spieltag: 1, heim: "Brasilien", gast: "Marokko", tipp: "2:1", begruendung: "Topspiel des Spieltags, Brasilien mit mehr Offensivpower.", tendenz: "Brasilien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m07", datum: "2026-06-14", zeit: "03:00", gruppe: "C", spieltag: 1, heim: "Haiti", gast: "Schottland", tipp: "0:2", begruendung: "Schottland strukturell überlegen.", tendenz: "Schottland", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m08", datum: "2026-06-14", zeit: "06:00", gruppe: "D", spieltag: 1, heim: "Australien", gast: "Türkei", tipp: "1:2", begruendung: "Türkei mit mehr Einzelkönnern (Güler, Çalhanoğlu).", tendenz: "Türkei", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m09", datum: "2026-06-14", zeit: "19:00", gruppe: "E", spieltag: 1, heim: "Deutschland", gast: "Curaçao", tipp: "3:0", begruendung: "Pflichtsieg gegen WM-Debütant, frühes Tor öffnet die Schleusen.", tendenz: "Deutschland", flag: "DE", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m10", datum: "2026-06-14", zeit: "22:00", gruppe: "F", spieltag: 1, heim: "Niederlande", gast: "Japan", tipp: "2:1", begruendung: "Oranje favorisiert, Japan technisch stark und gefährlich.", tendenz: "Niederlande", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m11", datum: "2026-06-15", zeit: "01:00", gruppe: "E", spieltag: 1, heim: "Elfenbeinküste", gast: "Ecuador", tipp: "1:1", begruendung: "Zwei defensivstarke Teams, vorsichtiger Start.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m12", datum: "2026-06-15", zeit: "04:00", gruppe: "F", spieltag: 1, heim: "Schweden", gast: "Tunesien", tipp: "2:0", begruendung: "Gyökeres/Isak knacken Tunesiens Abwehr.", tendenz: "Schweden", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m13", datum: "2026-06-15", zeit: "18:00", gruppe: "H", spieltag: 1, heim: "Spanien", gast: "Kap Verde", tipp: "3:0", begruendung: "Europameister gegen Debütant — klare Sache.", tendenz: "Spanien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m14", datum: "2026-06-15", zeit: "21:00", gruppe: "G", spieltag: 1, heim: "Belgien", gast: "Ägypten", tipp: "2:1", begruendung: "Belgien favorisiert, Salah hält Ägypten im Spiel.", tendenz: "Belgien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m15", datum: "2026-06-16", zeit: "00:00", gruppe: "H", spieltag: 1, heim: "Saudi-Arabien", gast: "Uruguay", tipp: "0:2", begruendung: "Uruguay unter Bielsa zu stark.", tendenz: "Uruguay", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m16", datum: "2026-06-16", zeit: "03:00", gruppe: "G", spieltag: 1, heim: "Iran", gast: "Neuseeland", tipp: "1:0", begruendung: "Iran defensiv diszipliniert, reicht knapp.", tendenz: "Iran", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m17", datum: "2026-06-16", zeit: "21:00", gruppe: "I", spieltag: 1, heim: "Frankreich", gast: "Senegal", tipp: "2:1", begruendung: "Kracher der Gruppe I, Frankreichs Offensive gibt den Ausschlag.", tendenz: "Frankreich", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m18", datum: "2026-06-17", zeit: "00:00", gruppe: "I", spieltag: 1, heim: "Irak", gast: "Norwegen", tipp: "0:2", begruendung: "Haaland & Ødegaard zu viel für den Irak.", tendenz: "Norwegen", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m19", datum: "2026-06-17", zeit: "03:00", gruppe: "J", spieltag: 1, heim: "Argentinien", gast: "Algerien", tipp: "2:0", begruendung: "Weltmeister startet souverän.", tendenz: "Argentinien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m20", datum: "2026-06-17", zeit: "06:00", gruppe: "J", spieltag: 1, heim: "Österreich", gast: "Jordanien", tipp: "2:0", begruendung: "Rangnick-Elf gegen Debütant — Pflichtsieg.", tendenz: "Österreich", flag: "AT", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m21", datum: "2026-06-17", zeit: "19:00", gruppe: "K", spieltag: 1, heim: "Portugal", gast: "DR Kongo", tipp: "3:0", begruendung: "Ronaldo & Co. deutlich überlegen.", tendenz: "Portugal", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m22", datum: "2026-06-17", zeit: "22:00", gruppe: "L", spieltag: 1, heim: "England", gast: "Kroatien", tipp: "2:1", begruendung: "Topspiel, Englands Tiefe gegen Kroatiens Erfahrung.", tendenz: "England", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m23", datum: "2026-06-18", zeit: "01:00", gruppe: "L", spieltag: 1, heim: "Ghana", gast: "Panama", tipp: "2:1", begruendung: "Ghana athletisch im Vorteil.", tendenz: "Ghana", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m24", datum: "2026-06-18", zeit: "04:00", gruppe: "K", spieltag: 1, heim: "Usbekistan", gast: "Kolumbien", tipp: "0:2", begruendung: "Kolumbien (James, Díaz) zu stark für den Debütanten.", tendenz: "Kolumbien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+
+      { id: "m25", datum: "2026-06-18", zeit: "18:00", gruppe: "A", spieltag: 2, heim: "Tschechien", gast: "Südafrika", tipp: "1:1", begruendung: "Zwei ähnlich starke Teams, enges Spiel.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m26", datum: "2026-06-18", zeit: "21:00", gruppe: "B", spieltag: 2, heim: "Schweiz", gast: "Bosnien", tipp: "2:0", begruendung: "Schweiz macht den Aufstieg klar.", tendenz: "Schweiz", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m27", datum: "2026-06-19", zeit: "00:00", gruppe: "B", spieltag: 2, heim: "Kanada", gast: "Katar", tipp: "2:0", begruendung: "Heimvorteil, Katar chancenlos.", tendenz: "Kanada", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m28", datum: "2026-06-19", zeit: "03:00", gruppe: "A", spieltag: 2, heim: "Mexiko", gast: "Südkorea", tipp: "1:1", begruendung: "Korea wehrt sich, Mexiko tut sich schwer.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m29", datum: "2026-06-19", zeit: "21:00", gruppe: "D", spieltag: 2, heim: "USA", gast: "Australien", tipp: "2:1", begruendung: "Gastgeber mit dem Publikum im Rücken.", tendenz: "USA", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m30", datum: "2026-06-20", zeit: "00:00", gruppe: "C", spieltag: 2, heim: "Schottland", gast: "Marokko", tipp: "0:1", begruendung: "Marokko (WM-Vierter 2022) kontrolliert das Spiel.", tendenz: "Marokko", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m31", datum: "2026-06-20", zeit: "03:00", gruppe: "C", spieltag: 2, heim: "Brasilien", gast: "Haiti", tipp: "4:0", begruendung: "Brasilien dreht offensiv auf.", tendenz: "Brasilien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m32", datum: "2026-06-20", zeit: "06:00", gruppe: "D", spieltag: 2, heim: "Türkei", gast: "Paraguay", tipp: "1:1", begruendung: "Paraguays Defensive bremst die Türkei aus.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m33", datum: "2026-06-20", zeit: "19:00", gruppe: "F", spieltag: 2, heim: "Niederlande", gast: "Schweden", tipp: "2:1", begruendung: "Spiel um Platz 1, Oranje knapp vorn.", tendenz: "Niederlande", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m34", datum: "2026-06-20", zeit: "22:00", gruppe: "E", spieltag: 2, heim: "Deutschland", gast: "Elfenbeinküste", tipp: "2:1", begruendung: "Härtestes physisches Spiel, DFB-Struktur setzt sich knapp durch (Remis möglich).", tendenz: "Deutschland", flag: "DE", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m35", datum: "2026-06-21", zeit: "02:00", gruppe: "E", spieltag: 2, heim: "Ecuador", gast: "Curaçao", tipp: "2:0", begruendung: "Ecuadors Defensive plus Effizienz reichen klar.", tendenz: "Ecuador", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m36", datum: "2026-06-21", zeit: "06:00", gruppe: "F", spieltag: 2, heim: "Tunesien", gast: "Japan", tipp: "1:2", begruendung: "Japans Tempo und Technik überwinden Tunesien.", tendenz: "Japan", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m37", datum: "2026-06-21", zeit: "18:00", gruppe: "H", spieltag: 2, heim: "Spanien", gast: "Saudi-Arabien", tipp: "3:0", begruendung: "Spanien macht das Achtelfinale perfekt.", tendenz: "Spanien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m38", datum: "2026-06-21", zeit: "21:00", gruppe: "G", spieltag: 2, heim: "Belgien", gast: "Iran", tipp: "1:0", begruendung: "Iran mauert, Belgien knackt es spät.", tendenz: "Belgien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m39", datum: "2026-06-22", zeit: "00:00", gruppe: "H", spieltag: 2, heim: "Uruguay", gast: "Kap Verde", tipp: "2:0", begruendung: "Uruguay zu abgezockt.", tendenz: "Uruguay", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m40", datum: "2026-06-22", zeit: "03:00", gruppe: "G", spieltag: 2, heim: "Neuseeland", gast: "Ägypten", tipp: "0:2", begruendung: "Salah führt Ägypten zum Sieg.", tendenz: "Ägypten", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m41", datum: "2026-06-22", zeit: "19:00", gruppe: "J", spieltag: 2, heim: "Argentinien", gast: "Österreich", tipp: "2:1", begruendung: "Argentinien favorisiert, Österreich verkauft sich teuer.", tendenz: "Argentinien", flag: "AT", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m42", datum: "2026-06-22", zeit: "23:00", gruppe: "I", spieltag: 2, heim: "Frankreich", gast: "Irak", tipp: "3:0", begruendung: "Frankreich rotiert und gewinnt locker.", tendenz: "Frankreich", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m43", datum: "2026-06-23", zeit: "02:00", gruppe: "I", spieltag: 2, heim: "Norwegen", gast: "Senegal", tipp: "1:1", begruendung: "Schlüsselspiel um Platz 2 — leistungsgerechtes Remis.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m44", datum: "2026-06-23", zeit: "05:00", gruppe: "J", spieltag: 2, heim: "Jordanien", gast: "Algerien", tipp: "1:2", begruendung: "Algerien (Mahrez) zu individuell stark.", tendenz: "Algerien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m45", datum: "2026-06-23", zeit: "19:00", gruppe: "K", spieltag: 2, heim: "Portugal", gast: "Usbekistan", tipp: "2:0", begruendung: "Portugal kontrolliert souverän.", tendenz: "Portugal", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m46", datum: "2026-06-23", zeit: "22:00", gruppe: "L", spieltag: 2, heim: "England", gast: "Ghana", tipp: "2:0", begruendung: "England macht den Aufstieg klar.", tendenz: "England", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m47", datum: "2026-06-24", zeit: "01:00", gruppe: "L", spieltag: 2, heim: "Panama", gast: "Kroatien", tipp: "0:2", begruendung: "Kroatien mit Turnier-DNA überlegen.", tendenz: "Kroatien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m48", datum: "2026-06-24", zeit: "04:00", gruppe: "K", spieltag: 2, heim: "Kolumbien", gast: "DR Kongo", tipp: "2:0", begruendung: "Kolumbien souverän.", tendenz: "Kolumbien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+
+      { id: "m49", datum: "2026-06-24", zeit: "21:00", gruppe: "B", spieltag: 3, heim: "Schweiz", gast: "Kanada", tipp: "1:1", begruendung: "Beide wohl schon weiter, Spiel um Platz 1.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m50", datum: "2026-06-24", zeit: "21:00", gruppe: "B", spieltag: 3, heim: "Bosnien", gast: "Katar", tipp: "2:1", begruendung: "Ehrenrettung für Bosnien.", tendenz: "Bosnien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m51", datum: "2026-06-25", zeit: "00:00", gruppe: "C", spieltag: 3, heim: "Schottland", gast: "Brasilien", tipp: "0:2", begruendung: "Brasilien zu stark, auch bei Rotation.", tendenz: "Brasilien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m52", datum: "2026-06-25", zeit: "00:00", gruppe: "C", spieltag: 3, heim: "Marokko", gast: "Haiti", tipp: "3:0", begruendung: "Marokko sichert Platz 2 deutlich.", tendenz: "Marokko", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m53", datum: "2026-06-25", zeit: "03:00", gruppe: "A", spieltag: 3, heim: "Tschechien", gast: "Mexiko", tipp: "1:1", begruendung: "Mexiko wackelt, Tschechien holt einen Punkt.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m54", datum: "2026-06-25", zeit: "03:00", gruppe: "A", spieltag: 3, heim: "Südafrika", gast: "Südkorea", tipp: "1:1", begruendung: "Offenes Spiel um Rang 2/3.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m55", datum: "2026-06-25", zeit: "22:00", gruppe: "E", spieltag: 3, heim: "Curaçao", gast: "Elfenbeinküste", tipp: "0:2", begruendung: "Elfenbeinküste muss gewinnen und tut es.", tendenz: "Elfenbeinküste", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m56", datum: "2026-06-25", zeit: "22:00", gruppe: "E", spieltag: 3, heim: "Ecuador", gast: "Deutschland", tipp: "1:1", begruendung: "Beide vorsichtig, Platzierung evtl. schon klar — Remis.", tendenz: "Remis", flag: "DE", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m57", datum: "2026-06-26", zeit: "01:00", gruppe: "F", spieltag: 3, heim: "Japan", gast: "Schweden", tipp: "1:1", begruendung: "Beide um Platz 2, enges Spiel.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m58", datum: "2026-06-26", zeit: "01:00", gruppe: "F", spieltag: 3, heim: "Tunesien", gast: "Niederlande", tipp: "1:2", begruendung: "Oranje auch mit Rotation vorn.", tendenz: "Niederlande", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m59", datum: "2026-06-26", zeit: "04:00", gruppe: "D", spieltag: 3, heim: "Türkei", gast: "USA", tipp: "1:1", begruendung: "Spiel um Platz 1 der offenen Gruppe D.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m60", datum: "2026-06-26", zeit: "04:00", gruppe: "D", spieltag: 3, heim: "Paraguay", gast: "Australien", tipp: "1:1", begruendung: "Enges Duell um den dritten Rang.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m61", datum: "2026-06-26", zeit: "21:00", gruppe: "I", spieltag: 3, heim: "Norwegen", gast: "Frankreich", tipp: "1:2", begruendung: "Frankreich macht Platz 1 klar, Haaland trifft.", tendenz: "Frankreich", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m62", datum: "2026-06-26", zeit: "21:00", gruppe: "I", spieltag: 3, heim: "Senegal", gast: "Irak", tipp: "2:0", begruendung: "Senegal muss liefern und gewinnt.", tendenz: "Senegal", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m63", datum: "2026-06-27", zeit: "02:00", gruppe: "H", spieltag: 3, heim: "Kap Verde", gast: "Saudi-Arabien", tipp: "1:1", begruendung: "Kellerduell, leistungsgerechtes Remis.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m64", datum: "2026-06-27", zeit: "02:00", gruppe: "H", spieltag: 3, heim: "Uruguay", gast: "Spanien", tipp: "1:1", begruendung: "Spitzenspiel, beide schon durch — Punkteteilung.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m65", datum: "2026-06-27", zeit: "05:00", gruppe: "G", spieltag: 3, heim: "Ägypten", gast: "Iran", tipp: "1:1", begruendung: "Beide um Platz 2, vorsichtig.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m66", datum: "2026-06-27", zeit: "05:00", gruppe: "G", spieltag: 3, heim: "Neuseeland", gast: "Belgien", tipp: "0:2", begruendung: "Belgien sichert Platz 1.", tendenz: "Belgien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m67", datum: "2026-06-27", zeit: "23:00", gruppe: "L", spieltag: 3, heim: "Panama", gast: "England", tipp: "0:3", begruendung: "England in Galaform gegen den Außenseiter.", tendenz: "England", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m68", datum: "2026-06-27", zeit: "23:00", gruppe: "L", spieltag: 3, heim: "Kroatien", gast: "Ghana", tipp: "2:0", begruendung: "Kroatien macht Platz 2 klar.", tendenz: "Kroatien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m69", datum: "2026-06-28", zeit: "01:30", gruppe: "K", spieltag: 3, heim: "Kolumbien", gast: "Portugal", tipp: "1:1", begruendung: "Spitzenspiel um Platz 1, beide bereits durch.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m70", datum: "2026-06-28", zeit: "01:30", gruppe: "K", spieltag: 3, heim: "DR Kongo", gast: "Usbekistan", tipp: "1:1", begruendung: "Zwei Debütanten/Außenseiter, offenes Spiel.", tendenz: "Remis", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m71", datum: "2026-06-28", zeit: "04:00", gruppe: "J", spieltag: 3, heim: "Algerien", gast: "Österreich", tipp: "1:1", begruendung: "Schlüsselspiel um Platz 2 — Österreich braucht mind. ein Remis.", tendenz: "Remis", flag: "AT", ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null },
+      { id: "m72", datum: "2026-06-28", zeit: "04:00", gruppe: "J", spieltag: 3, heim: "Jordanien", gast: "Argentinien", tipp: "0:3", begruendung: "Argentinien dominiert, Messi & Co. in Feierlaune.", tendenz: "Argentinien", flag: null, ergebnis: null, karten: { gelb: [], rot: [] }, status: "offen", treffer: null }
     ];
 
+    const GRUPPEN = ["A","B","C","D","E","F","G","H","I","J","K","L"];
     const risikoLabel = { banker: "Banker", value: "Value", underdog: "Außenseiter" };
+
+    // Risiko aus Tordifferenz herleiten:
+    // |Tor-Diff| >= 2 → Banker, = 1 → Value, = 0 (Remis) → Außenseiter
+    function risikoFor(tipp) {
+      const [a, b] = tipp.split(":").map(n => parseInt(n, 10));
+      const diff = Math.abs(a - b);
+      if (diff >= 2) return "banker";
+      if (diff === 1) return "value";
+      return "underdog";
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
 
     function renderMatch(m) {
       const cls = m.flag === "DE" ? " de" : m.flag === "AT" ? " at" : "";
+      const risiko = risikoFor(m.tipp);
       return `
         <article class="match${cls}">
           <div class="match-head">
-            <span>Gruppe ${m.gruppe} · ${m.datum} · ${m.zeit}</span>
-            <span class="badge ${m.risiko}">${risikoLabel[m.risiko]}</span>
+            <span>Gruppe ${m.gruppe} · Spieltag ${m.spieltag} · ${m.datum} · ${m.zeit}</span>
+            <span class="badge ${risiko}">${risikoLabel[risiko]}</span>
           </div>
-          <div class="match-teams">${m.heim} – ${m.gast}</div>
+          <div class="match-teams">${escapeHtml(m.heim)} – ${escapeHtml(m.gast)}</div>
           <div class="match-tip">Tipp: <strong>${m.tipp}</strong></div>
+          <div class="match-reason">${escapeHtml(m.begruendung)}</div>
         </article>
       `;
     }
 
-    function renderAll() {
-      document.getElementById("matchList").innerHTML = matches.map(renderMatch).join("");
-      renderToday();
+    function sortByKickoff(a, b) {
+      if (a.datum !== b.datum) return a.datum < b.datum ? -1 : 1;
+      return a.zeit < b.zeit ? -1 : a.zeit > b.zeit ? 1 : 0;
+    }
+
+    function addDays(isoDate, days) {
+      const d = new Date(isoDate + "T00:00:00");
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function formatDateLabel(iso) {
+      const d = new Date(iso + "T00:00:00");
+      return d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
     }
 
     function renderToday() {
       const selected = document.getElementById("datePicker").value;
-      const todays = matches.filter(m => m.datum === selected);
-      const list = document.getElementById("todayList");
-      if (todays.length === 0) {
-        list.innerHTML = `<div class="placeholder">Keine Spiele am ${selected}.</div>`;
-      } else {
-        list.innerHTML = todays.map(renderMatch).join("");
-      }
+      const next = addDays(selected, 1);
+
+      const todays = matches.filter(m => m.datum === selected).sort(sortByKickoff);
+      const tomorrows = matches.filter(m => m.datum === next).sort(sortByKickoff);
+
+      document.getElementById("heuteTitle").textContent = `Heute · ${formatDateLabel(selected)}`;
+      document.getElementById("morgenTitle").textContent = `Morgen · ${formatDateLabel(next)}`;
+
+      const tList = document.getElementById("todayList");
+      const mList = document.getElementById("tomorrowList");
+      tList.innerHTML = todays.length ? todays.map(renderMatch).join("") : `<div class="placeholder">Keine Spiele.</div>`;
+      mList.innerHTML = tomorrows.length ? tomorrows.map(renderMatch).join("") : `<div class="placeholder">Keine Spiele.</div>`;
+    }
+
+    function renderMatchList() {
+      const gr = document.getElementById("filterGruppe").value;
+      const sp = document.getElementById("filterSpieltag").value;
+      const filtered = matches
+        .filter(m => !gr || m.gruppe === gr)
+        .filter(m => !sp || String(m.spieltag) === sp)
+        .sort(sortByKickoff);
+      document.getElementById("matchCount").textContent = `${filtered.length} von ${matches.length} Spielen`;
+      document.getElementById("matchList").innerHTML = filtered.length
+        ? filtered.map(renderMatch).join("")
+        : `<div class="placeholder">Keine Spiele für diese Auswahl.</div>`;
+    }
+
+    function initFilters() {
+      const sel = document.getElementById("filterGruppe");
+      GRUPPEN.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g;
+        opt.textContent = "Gruppe " + g;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", renderMatchList);
+      document.getElementById("filterSpieltag").addEventListener("change", renderMatchList);
     }
 
     // Tab-Umschaltung
@@ -294,7 +427,9 @@
 
     document.getElementById("datePicker").addEventListener("change", renderToday);
 
-    renderAll();
+    initFilters();
+    renderToday();
+    renderMatchList();
   </script>
 </body>
 </html>
