@@ -205,6 +205,75 @@
       color: var(--text-muted);
       margin-bottom: 12px;
     }
+    .demo-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      margin-bottom: 16px;
+      color: var(--text);
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .demo-toggle .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .demo-toggle.on {
+      background: var(--banker);
+      color: #fff;
+      border-color: var(--banker);
+    }
+    .demo-toggle.on .dot { background: #fff; }
+    .group-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+    .group-card h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .standings {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .standings th, .standings td {
+      padding: 6px 4px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .standings tr:last-child td { border-bottom: none; }
+    .standings th {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+      letter-spacing: 0.4px;
+    }
+    .standings td.team, .standings th.team {
+      text-align: left;
+      font-weight: 500;
+    }
+    .standings td.pos, .standings th.pos {
+      width: 22px;
+      color: var(--text-muted);
+    }
+    .standings td.points { font-weight: 600; }
+    .standings tr.de { background: rgba(212, 175, 55, 0.10); }
+    .standings tr.at { background: rgba(37, 99, 235, 0.10); }
   </style>
 </head>
 <body>
@@ -253,7 +322,10 @@
 
     <section class="tab-panel" id="tab-tabellen">
       <h2>Live-Tabellen</h2>
-      <div class="placeholder">Tabellen kommen in Schritt 3.</div>
+      <button id="demoToggle" class="demo-toggle" type="button">
+        <span class="dot"></span><span id="demoToggleLabel">Demo-Modus: aus</span>
+      </button>
+      <div id="standingsList"></div>
     </section>
 
     <section class="tab-panel" id="tab-wetten">
@@ -426,6 +498,89 @@
       return "underdog";
     }
 
+    // --- Tabellen-Berechnung ---
+
+    // Demo-Modus: wenn an, werden noch nicht gespielte Spiele mit ihrem Tipp
+    // als Ergebnis behandelt. Die echten Daten werden dabei NICHT veraendert -
+    // wir lesen nur ggf. m.tipp statt m.ergebnis.
+    let demoMode = localStorage.getItem("demoMode") === "1";
+
+    function effectiveResult(m) {
+      if (m.ergebnis) return m.ergebnis;
+      if (demoMode) return m.tipp;
+      return null;
+    }
+
+    // Statistik fuer ein Team in einer Gruppe. restrictTo (optional) schraenkt
+    // auf Spiele gegen bestimmte Gegner ein - so wird die Funktion auch fuer
+    // die Head-to-Head-Mini-Tabelle bei Punktgleichheit wiederverwendet.
+    function buildStats(team, gruppe, restrictTo) {
+      const stats = {
+        team, spiele: 0, siege: 0, unentschieden: 0, niederlagen: 0,
+        tore_fuer: 0, tore_gegen: 0, punkte: 0, tordiff: 0
+      };
+      for (const m of matches) {
+        if (m.gruppe !== gruppe) continue;
+        if (m.heim !== team && m.gast !== team) continue;
+        const gegner = m.heim === team ? m.gast : m.heim;
+        if (restrictTo && !restrictTo.includes(gegner)) continue;
+        const erg = effectiveResult(m);
+        if (!erg) continue;
+        const [h, g] = erg.split(":").map(n => parseInt(n, 10));
+        const isHome = m.heim === team;
+        const eigene = isHome ? h : g;
+        const fremde = isHome ? g : h;
+        stats.spiele++;
+        stats.tore_fuer += eigene;
+        stats.tore_gegen += fremde;
+        if (eigene > fremde) { stats.siege++; stats.punkte += 3; }
+        else if (eigene === fremde) { stats.unentschieden++; stats.punkte += 1; }
+        else { stats.niederlagen++; }
+      }
+      stats.tordiff = stats.tore_fuer - stats.tore_gegen;
+      return stats;
+    }
+
+    // FIFA-Hauptkriterien: Punkte > Tordifferenz > erzielte Tore.
+    function compareStats(a, b) {
+      if (b.punkte    !== a.punkte)    return b.punkte    - a.punkte;
+      if (b.tordiff   !== a.tordiff)   return b.tordiff   - a.tordiff;
+      if (b.tore_fuer !== a.tore_fuer) return b.tore_fuer - a.tore_fuer;
+      return 0;
+    }
+
+    function computeStandings(gruppe) {
+      const teamSet = new Set();
+      matches.filter(m => m.gruppe === gruppe).forEach(m => {
+        teamSet.add(m.heim);
+        teamSet.add(m.gast);
+      });
+      const teams = [...teamSet];
+      const stats = teams.map(t => buildStats(t, gruppe));
+      stats.sort(compareStats);
+
+      // Punktgleiche Bloecke per Head-to-Head-Mini-Tabelle aufloesen.
+      const resolved = [];
+      let i = 0;
+      while (i < stats.length) {
+        let j = i;
+        while (j + 1 < stats.length && compareStats(stats[i], stats[j + 1]) === 0) j++;
+        if (j === i) {
+          resolved.push(stats[i]);
+        } else {
+          const tied = stats.slice(i, j + 1);
+          const tiedTeams = tied.map(s => s.team);
+          const h2h = tiedTeams.map(t => buildStats(t, gruppe, tiedTeams));
+          h2h.sort(compareStats);
+          for (const sub of h2h) {
+            resolved.push(tied.find(s => s.team === sub.team));
+          }
+        }
+        i = j + 1;
+      }
+      return resolved;
+    }
+
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
     }
@@ -471,6 +626,44 @@
       mList.innerHTML = tomorrows.length ? tomorrows.map(renderMatch).join("") : `<div class="placeholder">Keine Spiele.</div>`;
     }
 
+    function renderStandings() {
+      const html = GRUPPEN.map(gr => {
+        const rows = computeStandings(gr).map((s, idx) => {
+          const cls = s.team === "Deutschland" ? " class=\"de\""
+                    : s.team === "Österreich"  ? " class=\"at\""
+                    : "";
+          const diff = s.tordiff > 0 ? `+${s.tordiff}` : `${s.tordiff}`;
+          return `
+            <tr${cls}>
+              <td class="pos">${idx + 1}</td>
+              <td class="team">${escapeHtml(s.team)}</td>
+              <td>${s.spiele}</td>
+              <td class="points">${s.punkte}</td>
+              <td>${diff}</td>
+              <td>${s.tore_fuer}:${s.tore_gegen}</td>
+            </tr>`;
+        }).join("");
+        return `
+          <div class="group-card">
+            <h3>Gruppe ${gr}</h3>
+            <table class="standings">
+              <thead>
+                <tr>
+                  <th class="pos">#</th>
+                  <th class="team">Team</th>
+                  <th>Sp</th>
+                  <th>P</th>
+                  <th>±</th>
+                  <th>Tore</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }).join("");
+      document.getElementById("standingsList").innerHTML = html;
+    }
+
     function renderMatchList() {
       const gr = document.getElementById("filterGruppe").value;
       const sp = document.getElementById("filterSpieltag").value;
@@ -509,6 +702,22 @@
       });
       sel.addEventListener("change", renderMatchList);
       document.getElementById("filterSpieltag").addEventListener("change", renderMatchList);
+    }
+
+    function initDemoToggle() {
+      const btn = document.getElementById("demoToggle");
+      const label = document.getElementById("demoToggleLabel");
+      function apply() {
+        btn.classList.toggle("on", demoMode);
+        label.textContent = "Demo-Modus: " + (demoMode ? "an" : "aus");
+      }
+      apply();
+      btn.addEventListener("click", () => {
+        demoMode = !demoMode;
+        localStorage.setItem("demoMode", demoMode ? "1" : "0");
+        apply();
+        renderStandings();
+      });
     }
 
     function initTzPicker() {
@@ -554,9 +763,11 @@
 
     initTzPicker();
     initFilters();
+    initDemoToggle();
     updatePickerRange();
     renderToday();
     renderMatchList();
+    renderStandings();
     syncStickyOffsets();
   </script>
 </body>
