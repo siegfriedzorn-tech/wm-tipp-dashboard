@@ -249,6 +249,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
+      table-layout: fixed;
     }
     .standings th, .standings td {
       padding: 6px 4px;
@@ -263,15 +264,19 @@
       font-weight: 600;
       letter-spacing: 0.4px;
     }
-    .standings td.team, .standings th.team {
+    .standings .team {
       text-align: left;
       font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .standings td.pos, .standings th.pos {
-      width: 22px;
-      color: var(--text-muted);
-    }
-    .standings td.points { font-weight: 600; }
+    .standings .pos  { width: 28px; color: var(--text-muted); }
+    .standings .sp   { width: 36px; }
+    .standings .p    { width: 36px; }
+    .standings .diff { width: 44px; }
+    .standings .tore { width: 56px; }
+    .standings td.p { font-weight: 600; }
     .standings tr.de { background: rgba(212, 175, 55, 0.10); }
     .standings tr.at { background: rgba(37, 99, 235, 0.10); }
   </style>
@@ -637,10 +642,10 @@
             <tr${cls}>
               <td class="pos">${idx + 1}</td>
               <td class="team">${escapeHtml(s.team)}</td>
-              <td>${s.spiele}</td>
-              <td class="points">${s.punkte}</td>
-              <td>${diff}</td>
-              <td>${s.tore_fuer}:${s.tore_gegen}</td>
+              <td class="sp">${s.spiele}</td>
+              <td class="p">${s.punkte}</td>
+              <td class="diff">${diff}</td>
+              <td class="tore">${s.tore_fuer}:${s.tore_gegen}</td>
             </tr>`;
         }).join("");
         return `
@@ -651,10 +656,10 @@
                 <tr>
                   <th class="pos">#</th>
                   <th class="team">Team</th>
-                  <th>Sp</th>
-                  <th>P</th>
-                  <th>±</th>
-                  <th>Tore</th>
+                  <th class="sp">Sp</th>
+                  <th class="p">P</th>
+                  <th class="diff">±</th>
+                  <th class="tore">Tore</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
