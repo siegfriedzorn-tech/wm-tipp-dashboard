@@ -89,13 +89,14 @@
       background: transparent;
       color: #cbd5e1;
       border: none;
-      padding: 12px 6px;
-      font-size: 14px;
+      padding: 12px 4px;
+      font-size: 13px;
       font-weight: 500;
       font-family: inherit;
       cursor: pointer;
       border-bottom: 3px solid transparent;
       transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
     }
     nav.tabs button:hover { color: #fff; }
     nav.tabs button.active {
@@ -191,6 +192,34 @@
     .badge.banker { background: var(--banker); }
     .badge.value { background: var(--value); color: #1a1a1a; }
     .badge.underdog { background: var(--underdog); }
+    .badge.tbd { background: var(--text-muted); }
+    .ko-intro {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+    }
+    .round-count {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 11px;
+      margin-left: 4px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .match.ko .match-teams {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .match.ko .slot-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-style: italic;
+    }
     .placeholder {
       background: var(--card);
       border: 1px dashed var(--border);
@@ -297,6 +326,7 @@
     <button class="active" data-tab="heute">Heute</button>
     <button data-tab="spiele">Spiele</button>
     <button data-tab="tabellen">Tabellen</button>
+    <button data-tab="ko">K.-o.-Runde</button>
     <button data-tab="wetten">Wetten</button>
   </nav>
 
@@ -331,6 +361,15 @@
         <span class="dot"></span><span id="demoToggleLabel">Demo-Modus: aus</span>
       </button>
       <div id="standingsList"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-ko">
+      <h2>K.-o.-Runde</h2>
+      <div class="ko-intro">
+        Geruest fuer die 32 K.o.-Spiele. Die Paarungen werden gefuellt, sobald die
+        Gruppen ausgespielt sind — Aufsteiger und die acht besten Gruppendritten.
+      </div>
+      <div id="knockoutList"></div>
     </section>
 
     <section class="tab-panel" id="tab-wetten">
@@ -426,6 +465,39 @@
 
     const GRUPPEN = ["A","B","C","D","E","F","G","H","I","J","K","L"];
     const risikoLabel = { banker: "Banker", value: "Value", underdog: "Außenseiter" };
+
+    // K.-o.-Runden-Geruest (WM 2026 mit 48 Teams).
+    // count gibt die Spielanzahl je Runde an; die Platzhalter unten werden
+    // daraus erzeugt. Sobald die Vorrunde fertig ist, koennen heim/gast und
+    // kickoff pro Eintrag befuellt werden - heimSlot/gastSlot bleiben als
+    // Bezugspunkte (z.B. "1A", "2C", "Sieger K16-1") im Datenmodell.
+    const KO_ROUNDS = [
+      { key: "k32", title: "Sechzehntelfinale", count: 16 },
+      { key: "k16", title: "Achtelfinale",      count: 8 },
+      { key: "k08", title: "Viertelfinale",     count: 4 },
+      { key: "k04", title: "Halbfinale",        count: 2 },
+      { key: "k3p", title: "Spiel um Platz 3",  count: 1 },
+      { key: "kf",  title: "Finale",            count: 1 }
+    ];
+
+    const knockoutMatches = KO_ROUNDS.flatMap(r =>
+      Array.from({ length: r.count }, (_, i) => ({
+        id: `${r.key}-${i + 1}`,
+        runde: r.title,
+        rundeKey: r.key,
+        nr: i + 1,
+        heim: null,
+        gast: null,
+        heimSlot: null,
+        gastSlot: null,
+        kickoff: null,
+        tipp: null,
+        ergebnis: null,
+        karten: { gelb: [], rot: [] },
+        status: "platzhalter",
+        treffer: null
+      }))
+    );
 
     // Zeitzonen-Konfiguration: pro Zone die Locale, in der das Kuerzel
     // schoen rauskommt (de-DE → "MESZ", en-US → "PDT").
@@ -631,6 +703,42 @@
       mList.innerHTML = tomorrows.length ? tomorrows.map(renderMatch).join("") : `<div class="placeholder">Keine Spiele.</div>`;
     }
 
+    function renderKnockoutMatch(m) {
+      const heim = m.heim || m.heimSlot || "?";
+      const gast = m.gast || m.gastSlot || "?";
+      const hint = (m.heim || m.gast)
+        ? ""
+        : `<div class="slot-hint">Paarung wird nach der Vorrunde gefüllt.</div>`;
+      const kickoffText = m.kickoff
+        ? `${formatDateShort(m.kickoff, currentTz)} · ${formatTime(m.kickoff, currentTz)} ${formatTzAbbrev(m.kickoff, currentTz)}`
+        : "Anstoß offen";
+      return `
+        <article class="match ko">
+          <div class="match-head">
+            <span>${m.runde} · Spiel ${m.nr} · ${kickoffText}</span>
+            <span class="badge tbd">offen</span>
+          </div>
+          <div class="match-teams">${escapeHtml(heim)} – ${escapeHtml(gast)}</div>
+          ${hint}
+        </article>
+      `;
+    }
+
+    function renderKnockout() {
+      const html = KO_ROUNDS.map(r => {
+        const cards = knockoutMatches
+          .filter(m => m.rundeKey === r.key)
+          .map(renderKnockoutMatch)
+          .join("");
+        const countLabel = r.count === 1 ? "1 Spiel" : `${r.count} Spiele`;
+        return `
+          <h2>${r.title} <span class="round-count">(${countLabel})</span></h2>
+          ${cards}
+        `;
+      }).join("");
+      document.getElementById("knockoutList").innerHTML = html;
+    }
+
     function renderStandings() {
       const html = GRUPPEN.map(gr => {
         const rows = computeStandings(gr).map((s, idx) => {
@@ -773,6 +881,7 @@
     renderToday();
     renderMatchList();
     renderStandings();
+    renderKnockout();
     syncStickyOffsets();
   </script>
 </body>
