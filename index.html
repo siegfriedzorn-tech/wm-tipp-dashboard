@@ -204,6 +204,18 @@
       outline: 2px solid var(--accent);
       outline-offset: -1px;
     }
+    .result-clear {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0 4px;
+      margin-left: 2px;
+      border-radius: 4px;
+    }
+    .result-clear:hover { color: var(--underdog); background: rgba(220, 38, 38, 0.08); }
     .match-reason {
       font-size: 12px;
       color: var(--text-muted);
@@ -1053,7 +1065,7 @@
       const ergebnisCell = m.ergebnis
         ? `<span class="match-result">Ergebnis: <strong>${formatScore(m.ergebnis)}</strong>${
             m.treffer ? ` <span class="treffer" title="${m.treffer}">${TREFFER_ICON[m.treffer]}</span>` : ""
-          }</span>`
+          } <button type="button" class="result-clear" data-match-id="${m.id}" title="Ergebnis löschen" aria-label="Ergebnis löschen">×</button></span>`
         : `<label class="match-input">Ergebnis:
             <input type="text" class="result-input" data-match-id="${m.id}"
                    value="" placeholder="—" inputmode="numeric"
@@ -1291,8 +1303,15 @@
       }
     });
     document.addEventListener("click", e => {
-      if (e.target.classList && e.target.classList.contains("tip-edit-save")) {
+      if (!e.target.classList) return;
+      if (e.target.classList.contains("tip-edit-save")) {
         handleTipEdit(e.target);
+      } else if (e.target.classList.contains("result-clear")) {
+        const m = matches.find(mm => mm.id === e.target.dataset.matchId);
+        if (!m) return;
+        const datum = localDateKey(m.kickoff, "Europe/Berlin");
+        setResult({ heim: m.heim, gast: m.gast, datum,
+                    ergebnis: null, torschuetzen: [], gelb: [], rot: [] });
       }
     });
 
