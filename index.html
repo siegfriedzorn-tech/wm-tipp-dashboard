@@ -167,11 +167,39 @@
       font-weight: 600;
       margin-bottom: 4px;
     }
-    .match-tip {
+    .match-row {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 4px;
       font-size: 13px;
       color: var(--text-muted);
     }
     .match-tip strong { color: var(--text); }
+    .match-result { color: var(--text-muted); }
+    .match-result strong { color: var(--text); }
+    .match-result .treffer { font-size: 14px; }
+    .match-input {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .result-input {
+      width: 64px;
+      padding: 4px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--text);
+      text-align: center;
+    }
+    .result-input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
     .match-reason {
       font-size: 12px;
       color: var(--text-muted);
@@ -461,7 +489,11 @@
     ];
 
     // Kickoff-Strings einmalig in echte Date-Objekte konvertieren.
-    matches.forEach(m => { m.kickoff = new Date(m.kickoff); });
+    // Gleichzeitig torschuetzen-Feld initialisieren (vorher nicht im Schema).
+    matches.forEach(m => {
+      m.kickoff = new Date(m.kickoff);
+      if (!m.torschuetzen) m.torschuetzen = [];
+    });
 
     const GRUPPEN = ["A","B","C","D","E","F","G","H","I","J","K","L"];
     const risikoLabel = { banker: "Banker", value: "Value", underdog: "Außenseiter" };
@@ -575,6 +607,30 @@
       return "underdog";
     }
 
+    // --- Score-Helfer ---
+
+    // String "3:0" → { heim: 3, gast: 0 }, ungueltig → null.
+    function parseScore(str) {
+      if (typeof str !== "string") return null;
+      const m = str.trim().match(/^(\d+)\s*:\s*(\d+)$/);
+      if (!m) return null;
+      return { heim: parseInt(m[1], 10), gast: parseInt(m[2], 10) };
+    }
+
+    function formatScore(score) {
+      return score ? `${score.heim}:${score.gast}` : "";
+    }
+
+    // Tipp gegen Endergebnis vergleichen.
+    function compareTipp(tippStr, ergebnis) {
+      const t = parseScore(tippStr);
+      if (!t || !ergebnis) return null;
+      if (t.heim === ergebnis.heim && t.gast === ergebnis.gast) return "volltreffer";
+      const tSign = Math.sign(t.heim - t.gast);
+      const eSign = Math.sign(ergebnis.heim - ergebnis.gast);
+      return tSign === eSign ? "tendenz" : "daneben";
+    }
+
     // --- Tabellen-Berechnung ---
 
     // Demo-Modus: wenn an, werden noch nicht gespielte Spiele mit ihrem Tipp
@@ -582,9 +638,11 @@
     // wir lesen nur ggf. m.tipp statt m.ergebnis.
     let demoMode = localStorage.getItem("demoMode") === "1";
 
+    // Liefert immer ein {heim, gast}-Objekt oder null - egal ob Ergebnis oder
+    // (im Demo-Modus) Tipp die Quelle ist.
     function effectiveResult(m) {
       if (m.ergebnis) return m.ergebnis;
-      if (demoMode) return m.tipp;
+      if (demoMode && m.tipp) return parseScore(m.tipp);
       return null;
     }
 
@@ -603,10 +661,9 @@
         if (restrictTo && !restrictTo.includes(gegner)) continue;
         const erg = effectiveResult(m);
         if (!erg) continue;
-        const [h, g] = erg.split(":").map(n => parseInt(n, 10));
         const isHome = m.heim === team;
-        const eigene = isHome ? h : g;
-        const fremde = isHome ? g : h;
+        const eigene = isHome ? erg.heim : erg.gast;
+        const fremde = isHome ? erg.gast : erg.heim;
         stats.spiele++;
         stats.tore_fuer += eigene;
         stats.tore_gegen += fremde;
@@ -662,6 +719,78 @@
       return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
     }
 
+    // --- Ergebnis setzen ---
+
+    // Zentrale Funktion: findet ein Spiel anhand der Paarung (heim/gast) und des
+    // Berlin-Lokaldatums und traegt Ergebnis, Torschuetzen und Karten ein.
+    // Felder sind optional: undefined laesst den jeweiligen Wert unangetastet.
+    // ergebnis darf null sein, um es explizit zu loeschen.
+    // Wird sowohl vom manuellen Eingabefeld als auch (spaeter) vom "Tag
+    // aktualisieren"-Knopf via API aufgerufen.
+    function setResult({ heim, gast, datum, ergebnis, torschuetzen, gelb, rot }) {
+      const match = matches.find(m =>
+        m.heim === heim &&
+        m.gast === gast &&
+        localDateKey(m.kickoff, "Europe/Berlin") === datum
+      );
+      if (!match) {
+        console.warn("setResult: Spiel nicht gefunden:", heim, gast, datum);
+        return false;
+      }
+      if (ergebnis !== undefined)     match.ergebnis = ergebnis;
+      if (torschuetzen !== undefined) match.torschuetzen = torschuetzen;
+      if (gelb !== undefined)         match.karten.gelb = gelb;
+      if (rot !== undefined)          match.karten.rot = rot;
+      match.status  = match.ergebnis ? "beendet" : "offen";
+      match.treffer = match.ergebnis ? compareTipp(match.tipp, match.ergebnis) : null;
+      renderToday();
+      renderMatchList();
+      renderStandings();
+      renderTrefferquote();
+      return true;
+    }
+
+    function handleManualResult(matchId, value) {
+      const m = matches.find(mm => mm.id === matchId);
+      if (!m) return;
+      const datum = localDateKey(m.kickoff, "Europe/Berlin");
+      const trimmed = (value || "").trim();
+      if (!trimmed) {
+        setResult({ heim: m.heim, gast: m.gast, datum, ergebnis: null });
+        return;
+      }
+      const parsed = parseScore(trimmed);
+      if (!parsed) {
+        alert("Bitte im Format 3:0 eingeben.");
+        return;
+      }
+      setResult({ heim: m.heim, gast: m.gast, datum, ergebnis: parsed });
+    }
+
+    function computeTrefferquote() {
+      const played = matches.filter(m => m.ergebnis);
+      if (played.length === 0) return null;
+      let vt = 0, tn = 0, dn = 0;
+      played.forEach(m => {
+        if      (m.treffer === "volltreffer") vt++;
+        else if (m.treffer === "tendenz")     tn++;
+        else if (m.treffer === "daneben")     dn++;
+      });
+      const points = vt * 3 + tn * 1;
+      const pct = Math.round(points / (played.length * 3) * 100);
+      return { pct, vt, tn, dn, total: played.length };
+    }
+
+    function renderTrefferquote() {
+      const el = document.querySelector(".quote strong");
+      const q = computeTrefferquote();
+      el.textContent = q
+        ? `${q.pct}% · 🎯 ${q.vt} · ✅ ${q.tn} · ❌ ${q.dn}`
+        : "—";
+    }
+
+    const TREFFER_ICON = { volltreffer: "🎯", tendenz: "✅", daneben: "❌" };
+
     // --- Rendering ---
 
     function renderMatch(m) {
@@ -670,6 +799,17 @@
       const date = formatDateShort(m.kickoff, currentTz);
       const time = formatTime(m.kickoff, currentTz);
       const tz   = formatTzAbbrev(m.kickoff, currentTz);
+
+      const ergebnisCell = m.ergebnis
+        ? `<span class="match-result">Ergebnis: <strong>${formatScore(m.ergebnis)}</strong>${
+            m.treffer ? ` <span class="treffer" title="${m.treffer}">${TREFFER_ICON[m.treffer]}</span>` : ""
+          }</span>`
+        : `<label class="match-input">Ergebnis:
+            <input type="text" class="result-input" data-match-id="${m.id}"
+                   value="" placeholder="—" inputmode="numeric"
+                   pattern="\\d+:\\d+" maxlength="5" autocomplete="off">
+          </label>`;
+
       return `
         <article class="match${cls}">
           <div class="match-head">
@@ -677,7 +817,10 @@
             <span class="badge ${risiko}">${risikoLabel[risiko]}</span>
           </div>
           <div class="match-teams">${escapeHtml(m.heim)} – ${escapeHtml(m.gast)}</div>
-          <div class="match-tip">Tipp: <strong>${m.tipp}</strong></div>
+          <div class="match-row">
+            <span class="match-tip">Tipp: <strong>${m.tipp}</strong></span>
+            ${ergebnisCell}
+          </div>
           <div class="match-reason">${escapeHtml(m.begruendung)}</div>
         </article>
       `;
@@ -863,6 +1006,20 @@
 
     document.getElementById("datePicker").addEventListener("change", renderToday);
 
+    // Manuelle Ergebnis-Eingabe per Event-Delegation: ein Listener am Document
+    // fuer alle aktuellen und zukuenftigen .result-input-Felder.
+    document.addEventListener("change", e => {
+      if (e.target.classList && e.target.classList.contains("result-input")) {
+        handleManualResult(e.target.dataset.matchId, e.target.value);
+      }
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Enter" && e.target.classList && e.target.classList.contains("result-input")) {
+        e.preventDefault();
+        e.target.blur();
+      }
+    });
+
     // Tatsaechliche Hoehen von Header und Tab-Leiste messen, damit die
     // sticky Filter-Leiste sauber darunter andockt (auch bei Resize / Drehung).
     function syncStickyOffsets() {
@@ -882,7 +1039,11 @@
     renderMatchList();
     renderStandings();
     renderKnockout();
+    renderTrefferquote();
     syncStickyOffsets();
+
+    // Fuer Debugging und spaetere API-Integration global verfuegbar machen.
+    window.setResult = setResult;
   </script>
 </body>
 </html>
