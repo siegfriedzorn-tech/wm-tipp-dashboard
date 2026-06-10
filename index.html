@@ -83,13 +83,17 @@
       position: sticky;
       top: var(--header-h);
       z-index: 9;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
+    nav.tabs::-webkit-scrollbar { display: none; }
     nav.tabs button {
-      flex: 1;
+      flex: 1 0 auto;
+      min-width: 76px;
       background: transparent;
       color: #cbd5e1;
       border: none;
-      padding: 12px 4px;
+      padding: 12px 10px;
       font-size: 13px;
       font-weight: 500;
       font-family: inherit;
@@ -204,6 +208,104 @@
       font-size: 12px;
       color: var(--text-muted);
       margin-top: 6px;
+      font-style: italic;
+    }
+    .basis-hint {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    .tip-edit {
+      margin-top: 8px;
+    }
+    .tip-edit summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--accent);
+      list-style: none;
+      user-select: none;
+    }
+    .tip-edit summary::-webkit-details-marker { display: none; }
+    .tip-edit summary::before { content: "✎ "; }
+    .tip-edit[open] summary::before { content: "× "; }
+    .tip-edit-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .tip-edit-row {
+      display: flex;
+      gap: 6px;
+    }
+    .tip-edit-form input,
+    .tip-edit-form textarea {
+      padding: 6px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--text);
+    }
+    .tip-edit-tipp { width: 90px; text-align: center; }
+    .tip-edit-quelle { flex: 1; min-width: 0; }
+    .tip-edit-form textarea { resize: vertical; min-height: 44px; }
+    .tip-edit-save {
+      align-self: flex-start;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .historie-entry {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      box-shadow: var(--shadow);
+    }
+    .historie-head {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .historie-match {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .historie-change {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+    .historie-old {
+      color: var(--text-muted);
+      text-decoration: line-through;
+    }
+    .historie-arrow { color: var(--text-muted); }
+    .historie-new {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .historie-grund {
+      font-size: 13px;
+      color: var(--text);
+    }
+    .historie-quelle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
       font-style: italic;
     }
     .badge {
@@ -356,6 +458,7 @@
     <button data-tab="tabellen">Tabellen</button>
     <button data-tab="ko">K.-o.-Runde</button>
     <button data-tab="wetten">Wetten</button>
+    <button data-tab="historie">Änderungen</button>
   </nav>
 
   <main>
@@ -403,6 +506,11 @@
     <section class="tab-panel" id="tab-wetten">
       <h2>Wett-Board</h2>
       <div class="placeholder">Wett-Board kommt in Schritt 5.</div>
+    </section>
+
+    <section class="tab-panel" id="tab-historie">
+      <h2>Tipp-Anpassungen</h2>
+      <div id="historieList"></div>
     </section>
   </main>
 
@@ -490,10 +598,50 @@
 
     // Kickoff-Strings einmalig in echte Date-Objekte konvertieren.
     // Gleichzeitig torschuetzen-Feld initialisieren (vorher nicht im Schema).
+    // tippBasis friert den urspruenglichen Tipp aus dem Quell-Array ein und
+    // wird nie geschrieben - er ist der dauerhafte Vergleichswert fuer die
+    // Trefferquote, egal wie oft tipp spaeter angepasst wird.
     matches.forEach(m => {
       m.kickoff = new Date(m.kickoff);
       if (!m.torschuetzen) m.torschuetzen = [];
+      m.tippBasis = m.tipp;
     });
+
+    // Tipp-Overrides aus localStorage laden und auf die jeweiligen Spiele
+    // anwenden. Die Basis bleibt unangetastet.
+    const TIPP_OVERRIDES_KEY = "tippOverrides";
+    try {
+      const overrides = JSON.parse(localStorage.getItem(TIPP_OVERRIDES_KEY) || "{}");
+      matches.forEach(m => {
+        if (overrides[m.id]) m.tipp = overrides[m.id];
+      });
+    } catch (e) { console.warn("tippOverrides nicht lesbar:", e); }
+
+    // Aenderungs-Historie aus localStorage. Timestamps werden als ISO-Strings
+    // gespeichert und beim Laden in Date-Objekte zurueckverwandelt.
+    const HISTORIE_KEY = "tippHistorie";
+    const tippHistorie = (() => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(HISTORIE_KEY) || "[]");
+        raw.forEach(h => { h.timestamp = new Date(h.timestamp); });
+        return raw;
+      } catch (e) {
+        console.warn("tippHistorie nicht lesbar:", e);
+        return [];
+      }
+    })();
+
+    function saveTippOverrides() {
+      const map = {};
+      matches.forEach(m => {
+        if (m.tipp !== m.tippBasis) map[m.id] = m.tipp;
+      });
+      localStorage.setItem(TIPP_OVERRIDES_KEY, JSON.stringify(map));
+    }
+
+    function saveHistorie() {
+      localStorage.setItem(HISTORIE_KEY, JSON.stringify(tippHistorie));
+    }
 
     const GRUPPEN = ["A","B","C","D","E","F","G","H","I","J","K","L"];
     const risikoLabel = { banker: "Banker", value: "Value", underdog: "Außenseiter" };
@@ -742,12 +890,78 @@
       if (gelb !== undefined)         match.karten.gelb = gelb;
       if (rot !== undefined)          match.karten.rot = rot;
       match.status  = match.ergebnis ? "beendet" : "offen";
-      match.treffer = match.ergebnis ? compareTipp(match.tipp, match.ergebnis) : null;
+      // Trefferquote misst die urspruengliche Basis-Prognose, nicht den
+      // ggf. nachtraeglich angepassten aktuellen Tipp.
+      match.treffer = match.ergebnis ? compareTipp(match.tippBasis, match.ergebnis) : null;
       renderToday();
       renderMatchList();
       renderStandings();
       renderTrefferquote();
       return true;
+    }
+
+    // --- Aktuellen Tipp anpassen (Basis bleibt unveraendert) ---
+
+    function updateTipp({ heim, gast, datum, neuerTipp, begruendung, quelle }) {
+      const match = matches.find(m =>
+        m.heim === heim &&
+        m.gast === gast &&
+        localDateKey(m.kickoff, "Europe/Berlin") === datum
+      );
+      if (!match) {
+        console.warn("updateTipp: Spiel nicht gefunden:", heim, gast, datum);
+        return false;
+      }
+      const normalized = (neuerTipp || "").trim();
+      if (!parseScore(normalized)) {
+        console.warn("updateTipp: ungueltiger Tipp:", neuerTipp);
+        return false;
+      }
+      if (normalized === match.tipp) return false;
+      const alterTipp = match.tipp;
+      match.tipp = normalized;
+      tippHistorie.push({
+        id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date(),
+        matchId: match.id,
+        alterTipp,
+        neuerTipp: normalized,
+        begruendung: (begruendung || "").trim(),
+        quelle: (quelle || "").trim() || null
+      });
+      saveTippOverrides();
+      saveHistorie();
+      renderToday();
+      renderMatchList();
+      renderHistorie();
+      return true;
+    }
+
+    function handleTipEdit(btn) {
+      const form = btn.closest(".tip-edit-form");
+      if (!form) return;
+      const matchId = form.dataset.matchId;
+      const m = matches.find(mm => mm.id === matchId);
+      if (!m) return;
+      const tippInput   = form.querySelector(".tip-edit-tipp");
+      const grundInput  = form.querySelector(".tip-edit-grund");
+      const quelleInput = form.querySelector(".tip-edit-quelle");
+      const neuerTipp = tippInput.value.trim();
+      const begruendung = grundInput.value.trim();
+      const quelle = quelleInput.value.trim();
+      if (!parseScore(neuerTipp)) {
+        alert("Bitte den neuen Tipp im Format 3:0 eingeben.");
+        return;
+      }
+      if (!begruendung) {
+        alert("Bitte eine Begründung angeben.");
+        return;
+      }
+      const datum = localDateKey(m.kickoff, "Europe/Berlin");
+      const ok = updateTipp({ heim: m.heim, gast: m.gast, datum, neuerTipp, begruendung, quelle });
+      if (!ok) {
+        alert("Tipp ist identisch zum aktuellen — keine Änderung gespeichert.");
+      }
     }
 
     function handleManualResult(matchId, value) {
@@ -785,8 +999,44 @@
       const el = document.querySelector(".quote strong");
       const q = computeTrefferquote();
       el.textContent = q
-        ? `${q.pct}% · 🎯 ${q.vt} · ✅ ${q.tn} · ❌ ${q.dn}`
+        ? `🎯 ${q.vt} · ✅ ${q.tn} · ❌ ${q.dn} · ${q.total} ausgewertet`
         : "—";
+    }
+
+    function renderHistorie() {
+      const list = document.getElementById("historieList");
+      if (tippHistorie.length === 0) {
+        list.innerHTML = `<div class="placeholder">Noch keine Tipp-Anpassungen. Jede Aenderung wird hier protokolliert.</div>`;
+        return;
+      }
+      const sorted = [...tippHistorie].sort((a, b) => b.timestamp - a.timestamp);
+      const fmt = new Intl.DateTimeFormat("de-DE", {
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit", timeZone: currentTz
+      });
+      list.innerHTML = sorted.map(h => {
+        const m = matches.find(mm => mm.id === h.matchId);
+        const matchLabel = m
+          ? `Gruppe ${m.gruppe} · ${m.heim} – ${m.gast}`
+          : h.matchId;
+        const when = fmt.format(h.timestamp);
+        const quelleLine = h.quelle
+          ? `<div class="historie-quelle">Quelle: ${escapeHtml(h.quelle)}</div>`
+          : "";
+        return `
+          <article class="historie-entry">
+            <div class="historie-head">${when}</div>
+            <div class="historie-match">${escapeHtml(matchLabel)}</div>
+            <div class="historie-change">
+              <span class="historie-old">${escapeHtml(h.alterTipp)}</span>
+              <span class="historie-arrow">→</span>
+              <span class="historie-new">${escapeHtml(h.neuerTipp)}</span>
+            </div>
+            <div class="historie-grund">${escapeHtml(h.begruendung || "—")}</div>
+            ${quelleLine}
+          </article>
+        `;
+      }).join("");
     }
 
     const TREFFER_ICON = { volltreffer: "🎯", tendenz: "✅", daneben: "❌" };
@@ -810,6 +1060,26 @@
                    pattern="\\d+:\\d+" maxlength="5" autocomplete="off">
           </label>`;
 
+      const basisHint = m.tipp !== m.tippBasis
+        ? `<span class="basis-hint">(Basis: ${escapeHtml(m.tippBasis)})</span>`
+        : "";
+
+      const tipEditForm = `
+        <details class="tip-edit">
+          <summary>Tipp anpassen</summary>
+          <div class="tip-edit-form" data-match-id="${m.id}">
+            <div class="tip-edit-row">
+              <input class="tip-edit-tipp" type="text" placeholder="2:1"
+                     inputmode="numeric" maxlength="5" autocomplete="off"
+                     value="${escapeHtml(m.tipp)}">
+              <input class="tip-edit-quelle" type="text" placeholder="Quelle (z.B. kicker.de)" autocomplete="off">
+            </div>
+            <textarea class="tip-edit-grund" rows="2" placeholder="Begründung (z.B. Sperre, Form, neue Tabellenlage)"></textarea>
+            <button type="button" class="tip-edit-save">Speichern</button>
+          </div>
+        </details>
+      `;
+
       return `
         <article class="match${cls}">
           <div class="match-head">
@@ -818,10 +1088,11 @@
           </div>
           <div class="match-teams">${escapeHtml(m.heim)} – ${escapeHtml(m.gast)}</div>
           <div class="match-row">
-            <span class="match-tip">Tipp: <strong>${m.tipp}</strong></span>
+            <span class="match-tip">Tipp: <strong>${escapeHtml(m.tipp)}</strong>${basisHint}</span>
             ${ergebnisCell}
           </div>
           <div class="match-reason">${escapeHtml(m.begruendung)}</div>
+          ${tipEditForm}
         </article>
       `;
     }
@@ -1019,6 +1290,11 @@
         e.target.blur();
       }
     });
+    document.addEventListener("click", e => {
+      if (e.target.classList && e.target.classList.contains("tip-edit-save")) {
+        handleTipEdit(e.target);
+      }
+    });
 
     // Tatsaechliche Hoehen von Header und Tab-Leiste messen, damit die
     // sticky Filter-Leiste sauber darunter andockt (auch bei Resize / Drehung).
@@ -1040,10 +1316,12 @@
     renderStandings();
     renderKnockout();
     renderTrefferquote();
+    renderHistorie();
     syncStickyOffsets();
 
     // Fuer Debugging und spaetere API-Integration global verfuegbar machen.
     window.setResult = setResult;
+    window.updateTipp = updateTipp;
   </script>
 </body>
 </html>
