@@ -288,7 +288,11 @@
       color: var(--accent);
       border: 1px solid var(--accent);
     }
-    .tip-edit-reset:hover { background: rgba(37, 99, 235, 0.08); }
+    .tip-edit-reset:hover:not(:disabled) { background: rgba(37, 99, 235, 0.08); }
+    .tip-edit-reset:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
     .historie-entry {
       background: var(--card);
       border: 1px solid var(--border);
@@ -1115,9 +1119,11 @@
             <textarea class="tip-edit-grund" rows="2" placeholder="Begründung (z.B. Sperre, Form, neue Tabellenlage)"></textarea>
             <div class="tip-edit-actions">
               <button type="button" class="tip-edit-save">Speichern</button>
-              ${isAdjusted
-                ? `<button type="button" class="tip-edit-reset" data-match-id="${m.id}" title="Setzt den aktuellen Tipp wieder auf ${escapeHtml(m.tippBasis)}">Auf Basis zurücksetzen (${escapeHtml(m.tippBasis)})</button>`
-                : ""}
+              <button type="button" class="tip-edit-reset" data-match-id="${m.id}"
+                      ${isAdjusted ? "" : "disabled"}
+                      title="${isAdjusted
+                        ? `Setzt den aktuellen Tipp wieder auf ${escapeHtml(m.tippBasis)}`
+                        : "Aktueller Tipp ist bereits die Basis"}">Auf Basis zurücksetzen (${escapeHtml(m.tippBasis)})</button>
             </div>
           </div>
         </details>
