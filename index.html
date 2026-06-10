@@ -265,17 +265,30 @@
     .tip-edit-tipp { width: 90px; text-align: center; }
     .tip-edit-quelle { flex: 1; min-width: 0; }
     .tip-edit-form textarea { resize: vertical; min-height: 44px; }
-    .tip-edit-save {
-      align-self: flex-start;
+    .tip-edit-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tip-edit-save,
+    .tip-edit-reset {
       padding: 6px 14px;
       font-size: 13px;
       font-family: inherit;
-      background: var(--accent);
-      color: #fff;
-      border: none;
       border-radius: 6px;
       cursor: pointer;
     }
+    .tip-edit-save {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+    }
+    .tip-edit-reset {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .tip-edit-reset:hover { background: rgba(37, 99, 235, 0.08); }
     .historie-entry {
       background: var(--card);
       border: 1px solid var(--border);
@@ -949,6 +962,18 @@
       return true;
     }
 
+    function handleResetTipp(matchId) {
+      const m = matches.find(mm => mm.id === matchId);
+      if (!m || m.tipp === m.tippBasis) return;
+      const datum = localDateKey(m.kickoff, "Europe/Berlin");
+      updateTipp({
+        heim: m.heim, gast: m.gast, datum,
+        neuerTipp: m.tippBasis,
+        begruendung: "auf Basis zurückgesetzt",
+        quelle: null
+      });
+    }
+
     function handleTipEdit(btn) {
       const form = btn.closest(".tip-edit-form");
       if (!form) return;
@@ -1072,7 +1097,8 @@
                    pattern="\\d+:\\d+" maxlength="5" autocomplete="off">
           </label>`;
 
-      const basisHint = m.tipp !== m.tippBasis
+      const isAdjusted = m.tipp !== m.tippBasis;
+      const basisHint = isAdjusted
         ? `<span class="basis-hint">(Basis: ${escapeHtml(m.tippBasis)})</span>`
         : "";
 
@@ -1087,7 +1113,12 @@
               <input class="tip-edit-quelle" type="text" placeholder="Quelle (z.B. kicker.de)" autocomplete="off">
             </div>
             <textarea class="tip-edit-grund" rows="2" placeholder="Begründung (z.B. Sperre, Form, neue Tabellenlage)"></textarea>
-            <button type="button" class="tip-edit-save">Speichern</button>
+            <div class="tip-edit-actions">
+              <button type="button" class="tip-edit-save">Speichern</button>
+              ${isAdjusted
+                ? `<button type="button" class="tip-edit-reset" data-match-id="${m.id}" title="Setzt den aktuellen Tipp wieder auf ${escapeHtml(m.tippBasis)}">Auf Basis zurücksetzen (${escapeHtml(m.tippBasis)})</button>`
+                : ""}
+            </div>
           </div>
         </details>
       `;
@@ -1306,6 +1337,8 @@
       if (!e.target.classList) return;
       if (e.target.classList.contains("tip-edit-save")) {
         handleTipEdit(e.target);
+      } else if (e.target.classList.contains("tip-edit-reset")) {
+        handleResetTipp(e.target.dataset.matchId);
       } else if (e.target.classList.contains("result-clear")) {
         const m = matches.find(mm => mm.id === e.target.dataset.matchId);
         if (!m) return;
